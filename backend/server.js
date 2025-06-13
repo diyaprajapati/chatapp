@@ -11,7 +11,7 @@ app.use(cors());
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/chats', require('./routes/chatRoutes'));
-// app.use('/api/messages', require('./routes/messageRoutes'));
+app.use('/api/messages', require('./routes/messageRoutes'));
 
 const PORT = process.env.PORT || 5000;
 
