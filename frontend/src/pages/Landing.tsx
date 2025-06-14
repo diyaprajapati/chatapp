@@ -1,4 +1,3 @@
-
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { MessageCircle, Users, Zap, ArrowRight, Sparkles, Star, Shield, Globe } from "lucide-react";
@@ -19,7 +18,7 @@ export default function Landing() {
         <div className="absolute top-6 right-6">
           <ThemeToggle />
         </div>
-        
+
         <div className="container mx-auto px-4 py-20">
           {/* Enhanced Hero Section */}
           <div className="text-center mb-24 max-w-5xl mx-auto">
@@ -37,7 +36,7 @@ export default function Landing() {
                 </div>
               </div>
             </div>
-            
+
             <div className="mb-8">
               <h1 className="text-7xl md:text-8xl font-black bg-gradient-to-r from-slate-900 via-indigo-700 to-purple-700 dark:from-white dark:via-blue-200 dark:to-purple-200 bg-clip-text text-transparent mb-6 leading-tight tracking-tight">
                 Chat<span className="text-transparent bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text">App</span>
@@ -46,16 +45,16 @@ export default function Landing() {
                 <div className="h-1 w-32 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full"></div>
               </div>
             </div>
-            
+
             <p className="text-2xl md:text-3xl text-slate-700 dark:text-slate-200 mb-6 font-light leading-relaxed">
               Connect instantly with friends and family
             </p>
-            
+
             <p className="text-lg text-slate-600 dark:text-slate-300 mb-12 max-w-3xl mx-auto leading-relaxed">
-              Experience seamless, secure, and lightning-fast messaging with enterprise-grade security. 
+              Experience seamless, secure, and lightning-fast messaging with enterprise-grade security.
               Simple conversations, powerful connections that bring people together.
             </p>
-            
+
             <div className="flex flex-col sm:flex-row gap-6 justify-center items-center mb-12">
               <Button asChild size="lg" className="text-lg px-10 py-7 rounded-2xl shadow-2xl hover:shadow-3xl transform hover:scale-105 transition-all duration-300 group bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 border-0">
                 <Link to="/login" className="flex items-center gap-3">

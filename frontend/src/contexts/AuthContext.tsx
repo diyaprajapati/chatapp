@@ -1,4 +1,4 @@
-
+import api from '@/lib/axios';
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 interface User {
@@ -39,23 +39,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (username: string, password: string): Promise<boolean> => {
-    setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Mock successful login
-      const mockUser: User = {
-        id: '1',
-        firstName: 'John',
-        lastName: 'Doe',
-        username: username,
-      };
-      
-      setUser(mockUser);
-      localStorage.setItem('chat-user', JSON.stringify(mockUser));
+      setIsLoading(true);
+      const res = await api.post("/auth/login", { username, password });
+
+      const { token, user } = res.data;
+
+      // Store token (can also store in cookie or localStorage)
+      localStorage.setItem("token", token);
+      localStorage.setItem("user", JSON.stringify(user));
+
+      setUser(user);
+
+      // You can set user state in context here if needed
       return true;
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Login error:", error?.response?.data?.message || error.message);
       return false;
     } finally {
       setIsLoading(false);
@@ -63,23 +62,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signup = async (data: SignupData): Promise<boolean> => {
-    setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Mock successful signup
-      const mockUser: User = {
-        id: '1',
-        firstName: data.firstName,
-        lastName: data.lastName,
-        username: data.username,
-      };
-      
-      setUser(mockUser);
-      localStorage.setItem('chat-user', JSON.stringify(mockUser));
+      setIsLoading(true);
+      const res = await api.post("/auth/register", data);
+
+      const { token, user } = res.data;
+
+      localStorage.setItem("token", token);
+      localStorage.setItem("user", JSON.stringify(user));
+
+      setUser(user);
       return true;
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Signup error:", error?.response?.data?.message || error.message);
       return false;
     } finally {
       setIsLoading(false);

@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -20,7 +19,7 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!username || !password) {
       toast({
         title: "Error",
@@ -55,7 +54,7 @@ export default function Login() {
         <div className="absolute top-6 right-6">
           <ThemeToggle />
         </div>
-        
+
         <div className="flex items-center justify-center min-h-screen p-4">
           <div className="relative">
             <div className="absolute -inset-4 bg-gradient-to-r from-blue-600 to-purple-600 rounded-3xl blur-lg opacity-20"></div>
@@ -119,9 +118,9 @@ export default function Login() {
                       </button>
                     </div>
                   </div>
-                  <Button 
-                    type="submit" 
-                    className="w-full h-14 text-lg font-semibold rounded-xl shadow-xl hover:shadow-2xl transform hover:scale-[1.02] transition-all duration-300 group bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 border-0" 
+                  <Button
+                    type="submit"
+                    className="w-full h-14 text-lg font-semibold rounded-xl shadow-xl hover:shadow-2xl transform hover:scale-[1.02] transition-all duration-300 group bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 border-0"
                     disabled={isLoading}
                   >
                     {isLoading ? (
@@ -137,12 +136,12 @@ export default function Login() {
                     )}
                   </Button>
                 </form>
-                
+
                 <div className="mt-10 text-center">
                   <p className="text-slate-600 dark:text-slate-400">
                     Don't have an account?{" "}
-                    <Link 
-                      to="/signup" 
+                    <Link
+                      to="/signup"
                       className="text-transparent bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text font-semibold hover:from-blue-500 hover:to-purple-500 transition-all duration-300"
                     >
                       Create one now
