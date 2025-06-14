@@ -1,332 +1,417 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Send, Search, MoreVertical, ArrowLeft, Users, Trash2 } from 'lucide-react';
 
-import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Card } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { LogOut, Search, Send, Menu, X, Phone, Video, MoreVertical } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
-import { useNavigate } from "react-router-dom";
-import ThemeToggle from "@/components/ThemeToggle";
+const ChatApp = () => {
+  const [user, setUser] = useState(null);
+  const [chats, setChats] = useState([]);
+  const [activeChat, setActiveChat] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [searchUsers, setSearchUsers] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef(null);
 
-interface User {
-  id: string;
-  firstName: string;
-  lastName: string;
-  username: string;
-  avatar?: string;
-  lastMessage?: string;
-  timestamp?: string;
-  isOnline?: boolean;
-}
+  // Get token and user from localStorage (assuming they're stored there after login)
+  const token = localStorage.getItem('token');
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
 
-interface Message {
-  id: string;
-  senderId: string;
-  content: string;
-  timestamp: string;
-}
-
-export default function Chat() {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [messageInput, setMessageInput] = useState("");
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
-
-  // Mock users data with online status
-  const [users] = useState<User[]>([
-    {
-      id: '2',
-      firstName: 'Alice',
-      lastName: 'Johnson',
-      username: 'alice_j',
-      lastMessage: 'How are you doing?',
-      timestamp: '2 min ago',
-      isOnline: true
-    },
-    {
-      id: '3',
-      firstName: 'Bob',
-      lastName: 'Smith',
-      username: 'bobsmith',
-      lastMessage: 'See you later!',
-      timestamp: '1 hour ago',
-      isOnline: false
-    },
-    {
-      id: '4',
-      firstName: 'Carol',
-      lastName: 'Davis',
-      username: 'carol_d',
-      lastMessage: 'Thanks for the help',
-      timestamp: '3 hours ago',
-      isOnline: true
+  useEffect(() => {
+    if (currentUser._id) {
+      setUser(currentUser);
+      fetchChats();
     }
-  ]);
+  }, []);
 
-  const filteredUsers = users.filter(u => 
-    u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    `${u.firstName} ${u.lastName}`.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
-  const handleLogout = () => {
-    logout();
-    navigate("/");
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleSendMessage = () => {
-    if (!messageInput.trim() || !selectedUser) return;
+  // API call helper
+  const apiCall = async (endpoint, options = {}) => {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}${endpoint}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        //@ts-ignore
+        ...options.headers,
+      },
+      ...options,
+    });
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      senderId: user!.id,
-      content: messageInput,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
 
-    setMessages(prev => [...prev, newMessage]);
-    setMessageInput("");
+    return response.json();
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleSendMessage();
+  // Fetch all chats
+  const fetchChats = async () => {
+    try {
+      const data = await apiCall('/chats');
+      setChats(data);
+    } catch (error) {
+      console.error('Error fetching chats:', error);
     }
   };
+
+  // Fetch messages for a specific chat
+  const fetchMessages = async (chatId) => {
+    try {
+      setLoading(true);
+      const data = await apiCall(`/chats/${chatId}`);
+      setMessages(data.messages);
+      setActiveChat(data.chat);
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Send a message
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !activeChat) return;
+
+    try {
+      const messageData = {
+        content: newMessage,
+        chat: activeChat._id,
+        sender: user._id,
+        messageType: 'text'
+      };
+
+      // Optimistically add message to UI
+      const optimisticMessage = {
+        ...messageData,
+        _id: Date.now().toString(),
+        createdAt: new Date(),
+        sender: user
+      };
+
+      setMessages(prev => [...prev, optimisticMessage]);
+      setNewMessage('');
+
+      // Send to backend (you'll need to create this endpoint)
+      await apiCall('/messages', {
+        method: 'POST',
+        body: JSON.stringify(messageData)
+      });
+
+      // Refresh chats to update last message
+      fetchChats();
+    } catch (error) {
+      console.error('Error sending message:', error);
+      // Remove optimistic message on error
+      //@ts-ignore
+      setMessages(prev => prev.filter(msg => msg._id !== optimisticMessage._id));
+    }
+  };
+
+  // Search users
+  const handleUserSearch = async (query) => {
+    setSearchQuery(query);
+    if (query.length < 2) {
+      setSearchUsers([]);
+      return;
+    }
+
+    try {
+      const data = await apiCall(`/auth/search?username=${query}`);
+      setSearchUsers(data);
+    } catch (error) {
+      console.error('Error searching users:', error);
+    }
+  };
+
+  // Create new chat
+  const createChat = async (participantId) => {
+    try {
+      const data = await apiCall('/chats', {
+        method: 'POST',
+        body: JSON.stringify({
+          participants: [participantId],
+          isGroupChat: false
+        })
+      });
+
+      setChats(prev => [data, ...prev]);
+      setShowSearch(false);
+      setSearchQuery('');
+      setSearchUsers([]);
+      fetchMessages(data._id);
+    } catch (error) {
+      console.error('Error creating chat:', error);
+    }
+  };
+
+  // Delete chat
+  const deleteChat = async (chatId) => {
+    if (!confirm('Are you sure you want to delete this chat?')) return;
+
+    try {
+      await apiCall(`/chats/${chatId}`, { method: 'DELETE' });
+      setChats(prev => prev.filter(chat => chat._id !== chatId));
+      if (activeChat?._id === chatId) {
+        setActiveChat(null);
+        setMessages([]);
+      }
+    } catch (error) {
+      console.error('Error deleting chat:', error);
+    }
+  };
+
+  // Get chat display name
+  const getChatDisplayName = (chat) => {
+    if (chat.isGroupChat) {
+      return chat.chatName || 'Group Chat';
+    }
+    const otherUser = chat.participants.find(p => p._id !== user._id);
+    return otherUser ? `${otherUser.firstName} ${otherUser.lastName}` : 'Unknown User';
+  };
+
+  // Get other user in 1-on-1 chat
+  const getOtherUser = (chat) => {
+    return chat.participants.find(p => p._id !== user._id);
+  };
+
+  // Format time
+  const formatTime = (date) => {
+    return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Format date
+  const formatDate = (date) => {
+    const messageDate = new Date(date);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    if (messageDate.toDateString() === today.toDateString()) {
+      return 'Today';
+    } else if (messageDate.toDateString() === yesterday.toDateString()) {
+      return 'Yesterday';
+    } else {
+      return messageDate.toLocaleDateString();
+    }
+  };
+
+  if (!user._id) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-4">Please log in to access chat</h2>
+          <p className="text-gray-600">You need to be logged in to use the chat feature.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="h-screen bg-slate-50 dark:bg-slate-900 flex">
-      {/* Mobile Menu Button */}
-      <div className="md:hidden fixed top-4 left-4 z-50">
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm shadow-lg"
-        >
-          {sidebarOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-        </Button>
-      </div>
-
-      {/* Sidebar */}
-      <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} 
-        fixed md:relative md:translate-x-0 z-40 w-80 h-full bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700
-        transition-transform duration-300 ease-in-out shadow-xl md:shadow-none`}>
-        
-        {/* Header - Improved styling */}
-        <div className="p-4 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <Avatar className="ring-2 ring-blue-500/20 dark:ring-blue-400/20">
-                  <AvatarImage src={user?.avatar} />
-                  <AvatarFallback className="bg-gradient-to-br from-blue-500 to-blue-600 text-white font-medium">
-                    {user?.firstName?.[0]}{user?.lastName?.[0]}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white dark:border-slate-800"></div>
-              </div>
-              <div>
-                <p className="font-semibold text-slate-900 dark:text-white text-sm">
-                  {user?.firstName} {user?.lastName}
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">@{user?.username}</p>
-              </div>
-            </div>
-            <div className="flex gap-1">
-              <ThemeToggle />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleLogout}
-                className="text-slate-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-              >
-                <LogOut className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-slate-500" />
-            <Input
-              placeholder="Search conversations..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-1 focus:ring-blue-500/20 dark:focus:ring-blue-400/20"
-            />
+    <div className="flex h-screen bg-gray-100">
+      {/* Sidebar - Chat List */}
+      <div className={`w-full md:w-1/3 bg-white border-r ${activeChat ? 'hidden md:block' : 'block'}`}>
+        {/* Header */}
+        <div className="p-4 border-b bg-blue-600 text-white">
+          <div className="flex items-center justify-between">
+            <h1 className="text-xl font-semibold">Chats</h1>
+            <button
+              onClick={() => setShowSearch(!showSearch)}
+              className="p-2 rounded-full hover:bg-blue-700"
+            >
+              <Search size={20} />
+            </button>
           </div>
         </div>
 
-        {/* User List */}
-        <ScrollArea className="flex-1">
-          <div className="p-2">
-            {filteredUsers.map((chatUser) => (
-              <div
-                key={chatUser.id}
-                className={`p-3 mb-1 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-all duration-200 rounded-lg ${
-                  selectedUser?.id === chatUser.id ? 'bg-blue-50 dark:bg-blue-900/30 border-l-4 border-blue-500' : ''
-                }`}
-                onClick={() => {
-                  setSelectedUser(chatUser);
-                  setSidebarOpen(false);
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <Avatar className="w-12 h-12">
-                      <AvatarImage src={chatUser.avatar} />
-                      <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white">
-                        {chatUser.firstName[0]}{chatUser.lastName[0]}
-                      </AvatarFallback>
-                    </Avatar>
-                    {chatUser.isOnline && (
-                      <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white dark:border-slate-800"></div>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="font-medium text-sm truncate text-slate-900 dark:text-white">
-                        {chatUser.firstName} {chatUser.lastName}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {chatUser.timestamp}
-                      </p>
-                    </div>
-                    <p className="text-xs text-slate-600 dark:text-slate-300 truncate">
-                      {chatUser.lastMessage}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </ScrollArea>
-      </div>
-
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col bg-white dark:bg-slate-800">
-        {selectedUser ? (
-          <>
-            {/* Chat Header */}
-            <div className="p-4 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <Avatar className="w-10 h-10">
-                      <AvatarImage src={selectedUser.avatar} />
-                      <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white">
-                        {selectedUser.firstName[0]}{selectedUser.lastName[0]}
-                      </AvatarFallback>
-                    </Avatar>
-                    {selectedUser.isOnline && (
-                      <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white dark:border-slate-800"></div>
-                    )}
-                  </div>
-                  <div>
-                    <p className="font-medium text-slate-900 dark:text-white">
-                      {selectedUser.firstName} {selectedUser.lastName}
-                    </p>
-                    <p className="text-sm text-green-500">
-                      {selectedUser.isOnline ? 'Online' : 'Last seen recently'}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="icon" className="text-slate-600 dark:text-slate-300">
-                    <Phone className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="text-slate-600 dark:text-slate-300">
-                    <Video className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="text-slate-600 dark:text-slate-300">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* Messages */}
-            <ScrollArea className="flex-1 p-4 bg-slate-50 dark:bg-slate-900">
-              <div className="space-y-4">
-                {messages.map((message) => (
+        {/* Search Users */}
+        {showSearch && (
+          <div className="p-4 border-b bg-gray-50">
+            <input
+              type="text"
+              placeholder="Search users..."
+              value={searchQuery}
+              onChange={(e) => handleUserSearch(e.target.value)}
+              className="w-full p-2 border rounded-lg focus:outline-none focus:border-blue-500"
+            />
+            {searchUsers.length > 0 && (
+              <div className="mt-2 max-h-40 overflow-y-auto">
+                {searchUsers.map(searchUser => (
                   <div
-                    key={message.id}
-                    className={`flex ${
-                      message.senderId === user?.id ? 'justify-end' : 'justify-start'
-                    }`}
+                    key={searchUser._id}
+                    onClick={() => createChat(searchUser._id)}
+                    className="p-2 hover:bg-gray-100 cursor-pointer rounded flex items-center"
                   >
-                    <div
-                      className={`max-w-xs lg:max-w-md px-4 py-3 rounded-2xl shadow-sm ${
-                        message.senderId === user?.id
-                          ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-br-sm'
-                          : 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white rounded-bl-sm border border-slate-200 dark:border-slate-600'
-                      }`}
-                    >
-                      <p className="text-sm leading-relaxed">{message.content}</p>
-                      <p className={`text-xs mt-2 ${
-                        message.senderId === user?.id
-                          ? 'text-blue-100'
-                          : 'text-slate-500 dark:text-slate-400'
-                      }`}>
-                        {message.timestamp}
-                      </p>
+                    <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm mr-3">
+                      {searchUser.firstName[0]}
+                    </div>
+                    <div>
+                      <div className="font-medium">{searchUser.firstName} {searchUser.lastName}</div>
+                      <div className="text-sm text-gray-500">@{searchUser.username}</div>
                     </div>
                   </div>
                 ))}
               </div>
-            </ScrollArea>
+            )}
+          </div>
+        )}
+
+        {/* Chat List */}
+        <div className="overflow-y-auto flex-1">
+          {chats.map(chat => (
+            <div
+              key={chat._id}
+              onClick={() => fetchMessages(chat._id)}
+              className={`p-4 border-b hover:bg-gray-50 cursor-pointer ${activeChat?._id === chat._id ? 'bg-blue-50 border-blue-200' : ''
+                }`}
+            >
+              <div className="flex items-center">
+                <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center text-white font-medium mr-3">
+                  {chat.isGroupChat ? (
+                    <Users size={20} />
+                  ) : (
+                    getOtherUser(chat)?.firstName?.[0] || '?'
+                  )}
+                </div>
+                <div className="flex-1">
+                  <div className="flex justify-between items-start">
+                    <h3 className="font-medium truncate">{getChatDisplayName(chat)}</h3>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteChat(chat._id);
+                      }}
+                      className="p-1 hover:bg-gray-200 rounded"
+                    >
+                      <Trash2 size={16} className="text-gray-500" />
+                    </button>
+                  </div>
+                  {chat.lastMessage && (
+                    <p className="text-sm text-gray-600 truncate">
+                      {chat.lastMessage.content}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col">
+        {activeChat ? (
+          <>
+            {/* Chat Header */}
+            <div className="p-4 border-b bg-white flex items-center">
+              <button
+                onClick={() => setActiveChat(null)}
+                className="md:hidden mr-3 p-2 hover:bg-gray-100 rounded"
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-medium mr-3">
+                {activeChat.isGroupChat ? (
+                  <Users size={20} />
+                ) : (
+                  getOtherUser(activeChat)?.firstName?.[0] || '?'
+                )}
+              </div>
+              <div className="flex-1">
+                <h2 className="font-semibold">{getChatDisplayName(activeChat)}</h2>
+                <p className="text-sm text-gray-600">
+                  {activeChat.isGroupChat ?
+                    `${activeChat.participants.length} members` :
+                    'Online'
+                  }
+                </p>
+              </div>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {loading ? (
+                <div className="flex justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              ) : (
+                messages.map((message, index) => {
+                  const isOwnMessage = message.sender._id === user._id;
+                  const showDate = index === 0 ||
+                    formatDate(messages[index - 1].createdAt) !== formatDate(message.createdAt);
+
+                  return (
+                    <div key={message._id}>
+                      {showDate && (
+                        <div className="text-center text-sm text-gray-500 my-4">
+                          {formatDate(message.createdAt)}
+                        </div>
+                      )}
+                      <div className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-xs md:max-w-md lg:max-w-lg px-4 py-2 rounded-lg ${isOwnMessage
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-200 text-gray-800'
+                          }`}>
+                          {!isOwnMessage && activeChat.isGroupChat && (
+                            <div className="text-xs font-medium mb-1">
+                              {message.sender.firstName}
+                            </div>
+                          )}
+                          <div>{message.content}</div>
+                          <div className={`text-xs mt-1 ${isOwnMessage ? 'text-blue-100' : 'text-gray-500'
+                            }`}>
+                            {formatTime(message.createdAt)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+              <div ref={messagesEndRef} />
+            </div>
 
             {/* Message Input */}
-            <div className="p-4 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
-              <div className="flex gap-3 items-end">
-                <div className="flex-1 relative">
-                  <Input
-                    placeholder="Write a message..."
-                    value={messageInput}
-                    onChange={(e) => setMessageInput(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    className="min-h-[44px] pr-12 rounded-3xl border-slate-300 dark:border-slate-600 focus:border-blue-500 dark:focus:border-blue-400 bg-slate-50 dark:bg-slate-700"
-                  />
-                </div>
-                <Button 
-                  onClick={handleSendMessage} 
-                  size="icon"
-                  className="h-11 w-11 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-lg"
+            <div className="p-4 border-t bg-white">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="text"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                  placeholder="Type a message..."
+                  className="flex-1 p-3 border rounded-full focus:outline-none focus:border-blue-500"
+                />
+                <button
+                  onClick={sendMessage}
+                  disabled={!newMessage.trim()}
+                  className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Send className="h-4 w-4" />
-                </Button>
+                  <Send size={20} />
+                </button>
               </div>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center bg-slate-50 dark:bg-slate-900">
+          <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-              <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl">
-                <Search className="w-12 h-12 text-white" />
+              <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Users size={40} className="text-gray-400" />
               </div>
-              <h3 className="text-xl font-semibold mb-3 text-slate-900 dark:text-white">
-                Select a conversation
-              </h3>
-              <p className="text-slate-600 dark:text-slate-400 max-w-sm">
-                Choose someone from your contacts to start messaging and stay connected
-              </p>
+              <h2 className="text-2xl font-semibold text-gray-700 mb-2">Welcome to Chat</h2>
+              <p className="text-gray-500">Select a chat to start messaging</p>
             </div>
           </div>
         )}
       </div>
-
-      {/* Overlay for mobile */}
-      {sidebarOpen && (
-        <div
-          className="md:hidden fixed inset-0 bg-black/50 z-30 backdrop-blur-sm"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
     </div>
   );
-}
+};
+
+export default ChatApp;

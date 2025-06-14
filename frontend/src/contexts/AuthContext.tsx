@@ -2,7 +2,7 @@ import api from '@/lib/axios';
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 interface User {
-  id: string;
+  _id: string;
   firstName: string;
   lastName: string;
   username: string;
@@ -28,14 +28,43 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // Start with true to indicate initial loading
 
   useEffect(() => {
-    // Check for existing session
-    const savedUser = localStorage.getItem('chat-user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
+    const initializeAuth = () => {
+      const savedUser = localStorage.getItem('chat-user');
+      const token = localStorage.getItem('token');
+
+      if (savedUser && token) {
+        try {
+          // Simple client-side token expiry check
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          console.log(payload);
+          if (payload.exp * 1000 > Date.now()) {
+            setUser(JSON.parse(savedUser));
+          } else {
+            // Token expired, clear storage
+            localStorage.removeItem('chat-user');
+            localStorage.removeItem('token');
+            setUser(null);
+          }
+        } catch (error) {
+          // Invalid token format, clear storage
+          localStorage.removeItem('chat-user');
+          localStorage.removeItem('token');
+          setUser(null);
+        }
+      } else {
+        // No saved data, ensure clean state
+        localStorage.removeItem('chat-user');
+        localStorage.removeItem('token');
+        setUser(null);
+      }
+
+      setIsLoading(false);
+    };
+
+    initializeAuth();
   }, []);
 
   const login = async (username: string, password: string): Promise<boolean> => {
@@ -45,13 +74,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const { token, user } = res.data;
 
-      // Store token (can also store in cookie or localStorage)
+      // Store token and user
       localStorage.setItem("token", token);
-      localStorage.setItem("user", JSON.stringify(user));
+      localStorage.setItem("chat-user", JSON.stringify(user));
 
       setUser(user);
-
-      // You can set user state in context here if needed
       return true;
     } catch (error: any) {
       console.error("Login error:", error?.response?.data?.message || error.message);
@@ -69,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { token, user } = res.data;
 
       localStorage.setItem("token", token);
-      localStorage.setItem("user", JSON.stringify(user));
+      localStorage.setItem("chat-user", JSON.stringify(user));
 
       setUser(user);
       return true;
@@ -83,7 +110,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     setUser(null);
+    // Remove BOTH token and user data
     localStorage.removeItem('chat-user');
+    localStorage.removeItem('token'); // This was missing!
   };
 
   return (
