@@ -9,9 +9,18 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 app.use(cors({
-    origin: 'http://localhost:8080',
-    credentials: true
+    origin: process.env.FRONTEND_URI || 'http://localhost:8080',
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 }));
+
+// Middle ware
+let io;
+
+app.use((req, res, next) => {
+    req.io = io; // Make io accessible in routes
+    next();
+});
 
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));
@@ -32,7 +41,10 @@ mongoose.connect(process.env.MONGO_URI)
             cors: {
                 origin: process.env.FRONTEND_URI || 'http://localhost:8080',
                 credentials: true,
-            }
+            },
+            path: '/socket.io',
+            connectTimeout: 10000,
+            serveClient: false
         });
 
         // Store online users

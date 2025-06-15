@@ -66,3 +66,26 @@ exports.searchUser = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
+
+// PUT /api/auth/status - Update user online status
+exports.updateUserStatus = async (req, res) => {
+    const { isOnline } = req.body;
+    const userId = req.user.id;
+
+    try {
+        const updateData = {
+            isOnline,
+            lastSeen: new Date()
+        };
+
+        const user = await User.findByIdAndUpdate(
+            userId,
+            updateData,
+            { new: true }
+        ).select('-password');
+
+        res.json(user);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};

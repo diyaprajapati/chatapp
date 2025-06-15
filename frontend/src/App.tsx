@@ -11,6 +11,7 @@ import Signup from "./pages/Signup";
 import Chat from "./pages/Chat";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./contexts/AuthContext";
+import { ChatProvider } from "./contexts/ChatContext";
 
 const queryClient = new QueryClient();
 
@@ -18,6 +19,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider defaultTheme="light" storageKey="chat-app-theme">
       <AuthProvider>
+        {/* <ChatProvider> */}
         <TooltipProvider>
           <Toaster />
           <Sonner />
@@ -26,17 +28,20 @@ const App = () => (
               <Route path="/" element={<Landing />} />
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<Signup />} />
-              <Route 
-                path="/chat" 
+              <Route
+                path="/chat"
                 element={
                   <ProtectedRoute>
-                    <Chat />
+                    <ChatProvider>
+                      <Chat />
+                    </ChatProvider>
                   </ProtectedRoute>
-                } 
+                }
               />
             </Routes>
           </BrowserRouter>
         </TooltipProvider>
+        {/* </ChatProvider> */}
       </AuthProvider>
     </ThemeProvider>
   </QueryClientProvider>

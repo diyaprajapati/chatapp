@@ -3,11 +3,17 @@ const Chat = require('../models/chatModel');
 const User = require('../models/User');
 
 // POST /api/messages - Send a new message
+// In your messageController.js
 exports.sendMessage = async (req, res) => {
     const { content, chatId } = req.body;
     const userId = req.user.id;
 
     try {
+        // Validate input
+        if (!content || !chatId) {
+            return res.status(400).json({ message: 'Content and chatId are required' });
+        }
+
         // Validate chat exists and user is participant
         const chat = await Chat.findOne({
             _id: chatId,
@@ -18,7 +24,7 @@ exports.sendMessage = async (req, res) => {
             return res.status(404).json({ message: 'Chat not found or access denied' });
         }
 
-        // Create new message
+        // Create message
         const newMessage = await Message.create({
             userId,
             content,
@@ -26,20 +32,36 @@ exports.sendMessage = async (req, res) => {
             readBy: [{ user: userId, readAt: new Date() }]
         });
 
-        // Update chat's latest message and updatedAt
+        // Populate the message before sending
+        const populatedMessage = await Message.findById(newMessage._id)
+            .populate('userId', 'firstName lastName username avatar')
+            .populate('chatId', 'participants');
+
+        // Update chat's latest message
         await Chat.findByIdAndUpdate(chatId, {
             latestMessage: newMessage._id,
             updatedAt: new Date()
         });
 
-        // Populate the message with user details
-        const populatedMessage = await Message.findById(newMessage._id)
-            .populate('userId', 'firstName lastName username avatar')
-            .populate('chatId', 'participants');
+        // Emit to all participants
+        req.io.to(chatId).emit('message received', populatedMessage);
+        chat.participants.forEach(participant => {
+            if (participant._id.toString() !== userId.toString()) {
+                req.io.to(participant._id).emit('chat updated', {
+                    chatId,
+                    latestMessage: populatedMessage
+                });
+            }
+        });
 
         res.status(201).json(populatedMessage);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+
+    } catch (error) {
+        console.error('Error in sendMessage:', error);
+        res.status(500).json({
+            message: 'Error sending message',
+            error: process.env.NODE_ENV === 'development' ? error.message : null
+        });
     }
 };
 
@@ -56,7 +78,7 @@ exports.getChatMessages = async (req, res) => {
         const chat = await Chat.findOne({
             _id: chatId,
             participants: { $in: [userId] }
-        });
+        }).populate('participants', 'firstName lastName username avatar');
 
         if (!chat) {
             return res.status(404).json({ message: 'Chat not found or access denied' });
@@ -75,6 +97,7 @@ exports.getChatMessages = async (req, res) => {
 
         res.json({
             messages: messages.reverse(), // Reverse to show oldest first
+            chat,
             pagination: {
                 currentPage: page,
                 totalPages,

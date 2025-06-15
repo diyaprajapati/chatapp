@@ -1,29 +1,37 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Search, MoreVertical, ArrowLeft, Users, Trash2 } from 'lucide-react';
+import { Send, Search, ArrowLeft, Users } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useChatContext } from '@/contexts/ChatContext';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 
 const ChatApp = () => {
-  const [user, setUser] = useState(null);
-  const [chats, setChats] = useState([]);
-  const [activeChat, setActiveChat] = useState(null);
-  const [messages, setMessages] = useState([]);
+  const { user, logout } = useAuth();
+  const {
+    chats,
+    activeChat,
+    messages,
+    searchUsers,
+    searchQuery,
+    loading,
+    isTyping,
+    setActiveChat,
+    fetchMessages,
+    sendMessage,
+    handleUserSearch,
+    createChat,
+    handleTyping,
+    setSearchQuery,
+    getChatDisplayName,
+    getOtherUser,
+  } = useChatContext();
+
   const [newMessage, setNewMessage] = useState('');
-  const [searchUsers, setSearchUsers] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const messagesEndRef = useRef(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Get token and user from localStorage (assuming they're stored there after login)
-  const token = localStorage.getItem('token');
-  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-
-  useEffect(() => {
-    if (currentUser._id) {
-      setUser(currentUser);
-      fetchChats();
-    }
-  }, []);
-
+  // Auto scroll to bottom when messages change
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -32,162 +40,73 @@ const ChatApp = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // API call helper
-  const apiCall = async (endpoint, options = {}) => {
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}${endpoint}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        //@ts-ignore
-        ...options.headers,
-      },
-      ...options,
-    });
+  // Handle message input changes
+  const handleMessageChange = (value: string) => {
+    setNewMessage(value);
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    return response.json();
-  };
-
-  // Fetch all chats
-  const fetchChats = async () => {
-    try {
-      const data = await apiCall('/chats');
-      setChats(data);
-    } catch (error) {
-      console.error('Error fetching chats:', error);
+    // Handle typing indicator
+    if (value.trim()) {
+      handleTyping(true);
+    } else {
+      handleTyping(false);
     }
   };
 
-  // Fetch messages for a specific chat
-  const fetchMessages = async (chatId) => {
-    try {
-      setLoading(true);
-      const data = await apiCall(`/chats/${chatId}`);
-      setMessages(data.messages);
-      setActiveChat(data.chat);
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-    } finally {
-      setLoading(false);
+  // Send message handler
+  const handleSendMessage = async () => {
+    if (!newMessage.trim()) return;
+
+    const messageContent = newMessage.trim();
+    setNewMessage(''); // Clear input immediately for better UX
+
+    await sendMessage(messageContent);
+    handleTyping(false); // Stop typing indicator
+  };
+
+  // Handle key press for sending messages
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
     }
   };
 
-  // Send a message
-  const sendMessage = async () => {
-    if (!newMessage.trim() || !activeChat) return;
-
-    try {
-      const messageData = {
-        content: newMessage,
-        chat: activeChat._id,
-        sender: user._id,
-        messageType: 'text'
-      };
-
-      // Optimistically add message to UI
-      const optimisticMessage = {
-        ...messageData,
-        _id: Date.now().toString(),
-        createdAt: new Date(),
-        sender: user
-      };
-
-      setMessages(prev => [...prev, optimisticMessage]);
-      setNewMessage('');
-
-      // Send to backend (you'll need to create this endpoint)
-      await apiCall('/messages', {
-        method: 'POST',
-        body: JSON.stringify(messageData)
-      });
-
-      // Refresh chats to update last message
-      fetchChats();
-    } catch (error) {
-      console.error('Error sending message:', error);
-      // Remove optimistic message on error
-      //@ts-ignore
-      setMessages(prev => prev.filter(msg => msg._id !== optimisticMessage._id));
-    }
+  // Handle chat selection
+  const handleChatSelect = async (chatId: string) => {
+    await fetchMessages(chatId);
   };
 
-  // Search users
-  const handleUserSearch = async (query) => {
-    setSearchQuery(query);
-    if (query.length < 2) {
-      setSearchUsers([]);
-      return;
-    }
-
-    try {
-      const data = await apiCall(`/auth/search?username=${query}`);
-      setSearchUsers(data);
-    } catch (error) {
-      console.error('Error searching users:', error);
-    }
+  // Handle back button (mobile)
+  const handleBackToChats = () => {
+    setActiveChat(null);
   };
 
-  // Create new chat
-  const createChat = async (participantId) => {
-    try {
-      const data = await apiCall('/chats', {
-        method: 'POST',
-        body: JSON.stringify({
-          participants: [participantId],
-          isGroupChat: false
-        })
-      });
-
-      setChats(prev => [data, ...prev]);
-      setShowSearch(false);
+  // Handle search toggle
+  const handleSearchToggle = () => {
+    setShowSearch(!showSearch);
+    if (showSearch) {
       setSearchQuery('');
-      setSearchUsers([]);
-      fetchMessages(data._id);
-    } catch (error) {
-      console.error('Error creating chat:', error);
     }
   };
 
-  // Delete chat
-  const deleteChat = async (chatId) => {
-    if (!confirm('Are you sure you want to delete this chat?')) return;
-
-    try {
-      await apiCall(`/chats/${chatId}`, { method: 'DELETE' });
-      setChats(prev => prev.filter(chat => chat._id !== chatId));
-      if (activeChat?._id === chatId) {
-        setActiveChat(null);
-        setMessages([]);
-      }
-    } catch (error) {
-      console.error('Error deleting chat:', error);
-    }
+  // Handle user search
+  const handleUserSearchChange = (query: string) => {
+    handleUserSearch(query);
   };
 
-  // Get chat display name
-  const getChatDisplayName = (chat) => {
-    if (chat.isGroupChat) {
-      return chat.chatName || 'Group Chat';
-    }
-    const otherUser = chat.participants.find(p => p._id !== user._id);
-    return otherUser ? `${otherUser.firstName} ${otherUser.lastName}` : 'Unknown User';
+  // Handle create chat
+  const handleCreateChat = async (participantId: string) => {
+    await createChat(participantId);
+    setShowSearch(false);
   };
 
-  // Get other user in 1-on-1 chat
-  const getOtherUser = (chat) => {
-    return chat.participants.find(p => p._id !== user._id);
-  };
-
-  // Format time
-  const formatTime = (date) => {
+  // Format time helper
+  const formatTime = (date: string) => {
     return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // Format date
-  const formatDate = (date) => {
+  // Format date helper
+  const formatDate = (date: string) => {
     const messageDate = new Date(date);
     const today = new Date();
     const yesterday = new Date(today);
@@ -202,7 +121,7 @@ const ChatApp = () => {
     }
   };
 
-  if (!user._id) {
+  if (!user) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
@@ -220,24 +139,35 @@ const ChatApp = () => {
         {/* Header */}
         <div className="p-4 border-b bg-blue-600 text-white">
           <div className="flex items-center justify-between">
-            <h1 className="text-xl font-semibold">Chats</h1>
-            <button
-              onClick={() => setShowSearch(!showSearch)}
-              className="p-2 rounded-full hover:bg-blue-700"
-            >
-              <Search size={20} />
-            </button>
+            <div>
+              <h1 className="text-xl font-semibold">Chats</h1>
+              <p className="text-sm text-blue-100">Welcome, {user.firstName}!</p>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={handleSearchToggle}
+                className="p-2 rounded-full hover:bg-blue-700"
+              >
+                <Search size={20} />
+              </button>
+              <button
+                onClick={logout}
+                className="p-2 rounded-full hover:bg-blue-700 text-sm"
+              >
+                Logout
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Search Users */}
         {showSearch && (
           <div className="p-4 border-b bg-gray-50">
-            <input
+            <Input
               type="text"
               placeholder="Search users..."
               value={searchQuery}
-              onChange={(e) => handleUserSearch(e.target.value)}
+              onChange={(e) => handleUserSearchChange(e.target.value)}
               className="w-full p-2 border rounded-lg focus:outline-none focus:border-blue-500"
             />
             {searchUsers.length > 0 && (
@@ -245,7 +175,7 @@ const ChatApp = () => {
                 {searchUsers.map(searchUser => (
                   <div
                     key={searchUser._id}
-                    onClick={() => createChat(searchUser._id)}
+                    onClick={() => handleCreateChat(searchUser._id)}
                     className="p-2 hover:bg-gray-100 cursor-pointer rounded flex items-center"
                   >
                     <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm mr-3">
@@ -264,43 +194,47 @@ const ChatApp = () => {
 
         {/* Chat List */}
         <div className="overflow-y-auto flex-1">
-          {chats.map(chat => (
-            <div
-              key={chat._id}
-              onClick={() => fetchMessages(chat._id)}
-              className={`p-4 border-b hover:bg-gray-50 cursor-pointer ${activeChat?._id === chat._id ? 'bg-blue-50 border-blue-200' : ''
-                }`}
-            >
-              <div className="flex items-center">
-                <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center text-white font-medium mr-3">
-                  {chat.isGroupChat ? (
-                    <Users size={20} />
-                  ) : (
-                    getOtherUser(chat)?.firstName?.[0] || '?'
-                  )}
-                </div>
-                <div className="flex-1">
-                  <div className="flex justify-between items-start">
-                    <h3 className="font-medium truncate">{getChatDisplayName(chat)}</h3>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteChat(chat._id);
-                      }}
-                      className="p-1 hover:bg-gray-200 rounded"
-                    >
-                      <Trash2 size={16} className="text-gray-500" />
-                    </button>
-                  </div>
-                  {chat.lastMessage && (
-                    <p className="text-sm text-gray-600 truncate">
-                      {chat.lastMessage.content}
-                    </p>
-                  )}
-                </div>
-              </div>
+          {chats.length === 0 ? (
+            <div className="p-4 text-center text-gray-500">
+              <p>No chats yet. Search for users to start chatting!</p>
             </div>
-          ))}
+          ) : (
+            chats.map(chat => {
+              const otherUser = getOtherUser(chat);
+              return (
+                <div
+                  key={chat._id}
+                  onClick={() => handleChatSelect(chat._id)}
+                  className={`p-4 border-b hover:bg-gray-50 cursor-pointer ${activeChat?._id === chat._id ? 'bg-blue-50 border-blue-200' : ''
+                    }`}
+                >
+                  <div className="flex items-center">
+                    <div className="relative">
+                      <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center text-white font-medium mr-3">
+                        {otherUser?.firstName?.[0] || '?'}
+                      </div>
+                      {otherUser?.isOnline && (
+                        <div className="absolute bottom-0 right-3 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start">
+                        <Label className="font-medium text-black truncate">{getChatDisplayName(chat)}</Label>
+                        <span className="text-xs text-gray-500 flex-shrink-0 ml-2">
+                          {chat.latestMessage && formatTime(chat.latestMessage.createdAt)}
+                        </span>
+                      </div>
+                      {chat.latestMessage && (
+                        <p className="text-sm text-gray-600 truncate">
+                          {chat.latestMessage.content}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 
@@ -310,26 +244,25 @@ const ChatApp = () => {
           <>
             {/* Chat Header */}
             <div className="p-4 border-b bg-white flex items-center">
-              <button
-                onClick={() => setActiveChat(null)}
+              <Button
+                onClick={handleBackToChats}
                 className="md:hidden mr-3 p-2 hover:bg-gray-100 rounded"
+                variant="ghost"
               >
                 <ArrowLeft size={20} />
-              </button>
-              <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-medium mr-3">
-                {activeChat.isGroupChat ? (
-                  <Users size={20} />
-                ) : (
-                  getOtherUser(activeChat)?.firstName?.[0] || '?'
+              </Button>
+              <div className="relative">
+                <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-medium mr-3">
+                  {getOtherUser(activeChat)?.firstName?.[0] || '?'}
+                </div>
+                {getOtherUser(activeChat)?.isOnline && (
+                  <div className="absolute bottom-0 right-3 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
                 )}
               </div>
               <div className="flex-1">
-                <h2 className="font-semibold">{getChatDisplayName(activeChat)}</h2>
+                <Label className="font-semibold text-black text-lg">{getChatDisplayName(activeChat)}</Label>
                 <p className="text-sm text-gray-600">
-                  {activeChat.isGroupChat ?
-                    `${activeChat.participants.length} members` :
-                    'Online'
-                  }
+                  {getOtherUser(activeChat)?.isOnline ? 'Online' : 'Offline'}
                 </p>
               </div>
             </div>
@@ -340,61 +273,76 @@ const ChatApp = () => {
                 <div className="flex justify-center">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                 </div>
+              ) : messages.length === 0 ? (
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="text-center text-gray-500">
+                    <p>No messages yet. Start the conversation!</p>
+                  </div>
+                </div>
               ) : (
-                messages.map((message, index) => {
-                  const isOwnMessage = message.sender._id === user._id;
-                  const showDate = index === 0 ||
-                    formatDate(messages[index - 1].createdAt) !== formatDate(message.createdAt);
+                <>
+                  {messages.map((message, index) => {
+                    const isOwnMessage = message.userId._id === user._id;
+                    const showDate = index === 0 ||
+                      formatDate(messages[index - 1].createdAt) !== formatDate(message.createdAt);
 
-                  return (
-                    <div key={message._id}>
-                      {showDate && (
-                        <div className="text-center text-sm text-gray-500 my-4">
-                          {formatDate(message.createdAt)}
-                        </div>
-                      )}
-                      <div className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-xs md:max-w-md lg:max-w-lg px-4 py-2 rounded-lg ${isOwnMessage
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-200 text-gray-800'
-                          }`}>
-                          {!isOwnMessage && activeChat.isGroupChat && (
-                            <div className="text-xs font-medium mb-1">
-                              {message.sender.firstName}
-                            </div>
-                          )}
-                          <div>{message.content}</div>
-                          <div className={`text-xs mt-1 ${isOwnMessage ? 'text-blue-100' : 'text-gray-500'
+                    return (
+                      <div key={`${message._id}-${index}`}>
+                        {showDate && (
+                          <div className="text-center text-sm text-gray-500 my-4">
+                            {formatDate(message.createdAt)}
+                          </div>
+                        )}
+                        <div className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`max-w-xs md:max-w-md lg:max-w-lg px-4 py-2 rounded-lg ${isOwnMessage
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-200 text-gray-800'
                             }`}>
-                            {formatTime(message.createdAt)}
+                            <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                            <div className={`text-xs mt-1 ${isOwnMessage ? 'text-blue-100' : 'text-gray-500'
+                              }`}>
+                              {formatTime(message.createdAt)}
+                            </div>
                           </div>
                         </div>
                       </div>
+                    );
+                  })}
+                  {isTyping && (
+                    <div className="flex justify-start">
+                      <div className="bg-gray-200 px-4 py-2 rounded-lg">
+                        <div className="flex space-x-1">
+                          <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"></div>
+                          <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                          <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                        </div>
+                      </div>
                     </div>
-                  );
-                })
+                  )}
+                  <div ref={messagesEndRef} />
+                </>
               )}
-              <div ref={messagesEndRef} />
             </div>
 
             {/* Message Input */}
             <div className="p-4 border-t bg-white">
               <div className="flex items-center space-x-2">
-                <input
+                <Input
                   type="text"
                   value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                  onChange={(e) => handleMessageChange(e.target.value)}
+                  onKeyPress={handleKeyPress}
                   placeholder="Type a message..."
                   className="flex-1 p-3 border rounded-full focus:outline-none focus:border-blue-500"
+                  disabled={loading}
                 />
-                <button
-                  onClick={sendMessage}
-                  disabled={!newMessage.trim()}
+                <Button
+                  onClick={handleSendMessage}
+                  disabled={!newMessage.trim() || loading}
                   className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Send size={20} />
-                </button>
+                </Button>
               </div>
             </div>
           </>
@@ -405,7 +353,7 @@ const ChatApp = () => {
                 <Users size={40} className="text-gray-400" />
               </div>
               <h2 className="text-2xl font-semibold text-gray-700 mb-2">Welcome to Chat</h2>
-              <p className="text-gray-500">Select a chat to start messaging</p>
+              <p className="text-gray-500">Select a chat to start messaging or search for users to chat with</p>
             </div>
           </div>
         )}

@@ -8,12 +8,10 @@ exports.createChat = async (req, res) => {
     const userId = req.user.id;
 
     try {
-        // Add current user to participants if not already included
         const allParticipants = participants.includes(userId)
             ? participants
             : [...participants, userId];
 
-        // Check if chat already exists between these participants
         const existingChat = await Chat.findOne({
             participants: { $all: allParticipants, $size: allParticipants.length }
         }).populate('participants', 'firstName lastName username avatar')
@@ -23,20 +21,21 @@ exports.createChat = async (req, res) => {
             return res.json(existingChat);
         }
 
-        // Validate all participants exist
         const validUsers = await User.find({ _id: { $in: allParticipants } });
         if (validUsers.length !== allParticipants.length) {
             return res.status(400).json({ message: 'One or more participants not found' });
         }
 
-        // Create new chat
-        const newChat = await Chat.create({
-            participants: allParticipants
-        });
+        const newChat = await Chat.create({ participants: allParticipants });
 
         const populatedChat = await Chat.findById(newChat._id)
             .populate('participants', 'firstName lastName username avatar')
             .populate('latestMessage');
+
+        // Emit to all participants
+        allParticipants.forEach(participantId => {
+            req.io.to(participantId.toString()).emit('new chat', populatedChat);
+        });
 
         res.status(201).json(populatedChat);
     } catch (err) {
