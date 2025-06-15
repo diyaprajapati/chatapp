@@ -14,9 +14,9 @@ const io = new Server(server, {
         origin: process.env.FRONTEND_URI || 'http://localhost:8080',
         credentials: true,
     },
-    path: '/socket.io',
-    connectTimeout: 10000,
-    serveClient: false
+    // path: '/socket.io',
+    // connectTimeout: 10000,
+    // serveClient: false
 });
 
 app.use(cors({

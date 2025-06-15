@@ -106,7 +106,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
                 reconnectionDelay: 1000,
                 reconnectionDelayMax: 5000,
                 randomizationFactor: 0.5,
-                path: '/socket.io',
+                // path: '/socket.io',
                 withCredentials: true,
                 query: {
                     userId: user?._id || ''
@@ -186,9 +186,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
             });
 
             // Handle connection errors
-            socket.on('connect_error', (error) => {
-                console.error('Socket connection error:', error);
-            });
+            // socket.on('connect_error', (error) => {
+            //     console.error('Socket connection error:', error);
+            // });
 
             socket.on('disconnect', (reason) => {
                 console.log('Socket disconnected:', reason);
