@@ -7,16 +7,26 @@ const { Server } = require('socket.io');
 
 dotenv.config();
 const app = express();
-app.use(express.json());
+const server = http.createServer(app);
+const io = new Server(server, {
+    pingTimeout: 60000,
+    cors: {
+        origin: process.env.FRONTEND_URI || 'http://localhost:8080',
+        credentials: true,
+    },
+    path: '/socket.io',
+    connectTimeout: 10000,
+    serveClient: false
+});
+
 app.use(cors({
     origin: process.env.FRONTEND_URI || 'http://localhost:8080',
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 }));
+app.use(express.json());
 
 // Middle ware
-let io;
-
 app.use((req, res, next) => {
     req.io = io; // Make io accessible in routes
     next();
@@ -32,20 +42,6 @@ const PORT = process.env.PORT || 5000;
 mongoose.connect(process.env.MONGO_URI)
     .then(() => {
         console.log('MongoDB connected');
-
-        // ----------- Socket Server Setup -------------
-        const server = http.createServer(app);
-
-        const io = new Server(server, {
-            pingTimeout: 60000,
-            cors: {
-                origin: process.env.FRONTEND_URI || 'http://localhost:8080',
-                credentials: true,
-            },
-            path: '/socket.io',
-            connectTimeout: 10000,
-            serveClient: false
-        });
 
         // Store online users
         const onlineUsers = new Map();

@@ -3,7 +3,6 @@ const Chat = require('../models/chatModel');
 const User = require('../models/User');
 
 // POST /api/messages - Send a new message
-// In your messageController.js
 exports.sendMessage = async (req, res) => {
     const { content, chatId } = req.body;
     const userId = req.user.id;
@@ -18,7 +17,7 @@ exports.sendMessage = async (req, res) => {
         const chat = await Chat.findOne({
             _id: chatId,
             participants: { $in: [userId] }
-        });
+        }).populate('participants', 'firstName lastName username avatar');
 
         if (!chat) {
             return res.status(404).json({ message: 'Chat not found or access denied' });
@@ -45,14 +44,17 @@ exports.sendMessage = async (req, res) => {
 
         // Emit to all participants
         req.io.to(chatId).emit('message received', populatedMessage);
-        chat.participants.forEach(participant => {
-            if (participant._id.toString() !== userId.toString()) {
-                req.io.to(participant._id).emit('chat updated', {
-                    chatId,
-                    latestMessage: populatedMessage
-                });
-            }
-        });
+        if (Array.isArray(chat.participants)) {
+            chat.participants.forEach(participant => {
+                const participantId = participant._id ? participant._id.toString() : participant.toString();
+                if (participantId !== userId.toString()) {
+                    req.io.to(participantId).emit('chat updated', {
+                        chatId,
+                        latestMessage: populatedMessage
+                    });
+                }
+            });
+        }
 
         res.status(201).json(populatedMessage);
 
