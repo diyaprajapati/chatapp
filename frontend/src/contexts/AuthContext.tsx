@@ -1,5 +1,6 @@
 import api from '@/lib/axios';
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 interface User {
   _id: string;
@@ -29,6 +30,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true); // Start with true to indicate initial loading
+
+  // const navigate = useNavigate();
 
   useEffect(() => {
     const initializeAuth = () => {
@@ -110,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     setUser(null);
+
     // Remove BOTH token and user data
     localStorage.removeItem('chat-user');
     localStorage.removeItem('token'); // This was missing!

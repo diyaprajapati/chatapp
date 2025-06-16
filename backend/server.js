@@ -77,11 +77,11 @@ mongoose.connect(process.env.MONGO_URI)
             socket.on('new message', (messageData) => {
                 const { chatId, message } = messageData;
 
-                // Emit to all users in the chat room except sender
+                // Broadcast to users in the chat room (excluding sender)
                 socket.to(chatId).emit('message received', message);
 
-                // Also emit to individual user rooms for participants
-                if (message.chatId && message.chatId.participants) {
+                // Emit to individual users if needed (optional)
+                if (message.chatId?.participants) {
                     message.chatId.participants.forEach((participant) => {
                         if (participant._id !== message.userId._id) {
                             socket.to(participant._id).emit('message received', message);

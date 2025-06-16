@@ -5,6 +5,9 @@ import { useChatContext } from '@/contexts/ChatContext';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Navigate } from 'react-router-dom';
 
 const ChatApp = () => {
   const { user, logout } = useAuth();
@@ -31,7 +34,8 @@ const ChatApp = () => {
   const [showSearch, setShowSearch] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto scroll to bottom when messages change
+  // Remove duplicate socket handling - it's already handled in ChatContext
+
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -40,11 +44,8 @@ const ChatApp = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Handle message input changes
   const handleMessageChange = (value: string) => {
     setNewMessage(value);
-
-    // Handle typing indicator
     if (value.trim()) {
       handleTyping(true);
     } else {
@@ -52,18 +53,14 @@ const ChatApp = () => {
     }
   };
 
-  // Send message handler
   const handleSendMessage = async () => {
     if (!newMessage.trim()) return;
-
     const messageContent = newMessage.trim();
-    setNewMessage(''); // Clear input immediately for better UX
-
+    setNewMessage('');
     await sendMessage(messageContent);
-    handleTyping(false); // Stop typing indicator
+    handleTyping(false);
   };
 
-  // Handle key press for sending messages
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -71,17 +68,14 @@ const ChatApp = () => {
     }
   };
 
-  // Handle chat selection
   const handleChatSelect = async (chatId: string) => {
     await fetchMessages(chatId);
   };
 
-  // Handle back button (mobile)
   const handleBackToChats = () => {
     setActiveChat(null);
   };
 
-  // Handle search toggle
   const handleSearchToggle = () => {
     setShowSearch(!showSearch);
     if (showSearch) {
@@ -89,23 +83,19 @@ const ChatApp = () => {
     }
   };
 
-  // Handle user search
   const handleUserSearchChange = (query: string) => {
     handleUserSearch(query);
   };
 
-  // Handle create chat
   const handleCreateChat = async (participantId: string) => {
     await createChat(participantId);
     setShowSearch(false);
   };
 
-  // Format time helper
   const formatTime = (date: string) => {
     return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // Format date helper
   const formatDate = (date: string) => {
     const messageDate = new Date(date);
     const today = new Date();
@@ -122,80 +112,64 @@ const ChatApp = () => {
   };
 
   if (!user) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold mb-4">Please log in to access chat</h2>
-          <p className="text-gray-600">You need to be logged in to use the chat feature.</p>
-        </div>
-      </div>
-    );
+    return <Navigate to="/login" replace />;
   }
 
+
   return (
-    <div className="flex h-screen bg-gray-100">
-      {/* Sidebar - Chat List */}
-      <div className={`w-full md:w-1/3 bg-white border-r ${activeChat ? 'hidden md:block' : 'block'}`}>
-        {/* Header */}
-        <div className="p-4 border-b bg-blue-600 text-white">
+    <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-black dark:text-white">
+      <div className={`w-full md:w-1/3 border-r border-gray-200 dark:border-gray-700 ${activeChat ? 'hidden md:block' : 'block'}`}>
+        <div className="p-4 border-b bg-blue-600 text-white dark:bg-blue-700">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-semibold">Chats</h1>
               <p className="text-sm text-blue-100">Welcome, {user.firstName}!</p>
             </div>
             <div className="flex items-center space-x-2">
-              <button
-                onClick={handleSearchToggle}
-                className="p-2 rounded-full hover:bg-blue-700"
-              >
+              <Button onClick={handleSearchToggle} className="p-2 rounded-full" variant="ghost">
                 <Search size={20} />
-              </button>
-              <button
-                onClick={logout}
-                className="p-2 rounded-full hover:bg-blue-700 text-sm"
-              >
+              </Button>
+              <Button onClick={logout} className="p-2 rounded-full text-sm" variant="destructive">
                 Logout
-              </button>
+              </Button>
             </div>
           </div>
         </div>
 
-        {/* Search Users */}
         {showSearch && (
-          <div className="p-4 border-b bg-gray-50">
+          <div className="p-4 border-b bg-gray-50 dark:bg-gray-800">
             <Input
               type="text"
               placeholder="Search users..."
               value={searchQuery}
               onChange={(e) => handleUserSearchChange(e.target.value)}
-              className="w-full p-2 border rounded-lg focus:outline-none focus:border-blue-500"
+              className="w-full"
             />
             {searchUsers.length > 0 && (
-              <div className="mt-2 max-h-40 overflow-y-auto">
+              <ScrollArea className="mt-2 max-h-40">
                 {searchUsers.map(searchUser => (
                   <div
                     key={searchUser._id}
                     onClick={() => handleCreateChat(searchUser._id)}
-                    className="p-2 hover:bg-gray-100 cursor-pointer rounded flex items-center"
+                    className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer rounded flex items-center"
                   >
                     <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm mr-3">
                       {searchUser.firstName[0]}
                     </div>
                     <div>
                       <div className="font-medium">{searchUser.firstName} {searchUser.lastName}</div>
-                      <div className="text-sm text-gray-500">@{searchUser.username}</div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400">@{searchUser.username}</div>
                     </div>
                   </div>
                 ))}
-              </div>
+              </ScrollArea>
             )}
           </div>
         )}
 
-        {/* Chat List */}
-        <div className="overflow-y-auto flex-1">
+        <ScrollArea className="h-[calc(100vh-128px)]">
           {chats.length === 0 ? (
-            <div className="p-4 text-center text-gray-500">
+            <div className="p-4 text-center text-gray-500 dark:text-gray-400">
               <p>No chats yet. Search for users to start chatting!</p>
             </div>
           ) : (
@@ -205,8 +179,7 @@ const ChatApp = () => {
                 <div
                   key={chat._id}
                   onClick={() => handleChatSelect(chat._id)}
-                  className={`p-4 border-b hover:bg-gray-50 cursor-pointer ${activeChat?._id === chat._id ? 'bg-blue-50 border-blue-200' : ''
-                    }`}
+                  className={`p-4 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer ${activeChat?._id === chat._id ? 'bg-blue-50 dark:bg-blue-900 border-blue-200 dark:border-blue-800' : ''}`}
                 >
                   <div className="flex items-center">
                     <div className="relative">
@@ -214,18 +187,18 @@ const ChatApp = () => {
                         {otherUser?.firstName?.[0] || '?'}
                       </div>
                       {otherUser?.isOnline && (
-                        <div className="absolute bottom-0 right-3 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+                        <div className="absolute bottom-0 right-3 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-900"></div>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-start">
-                        <Label className="font-medium text-black truncate">{getChatDisplayName(chat)}</Label>
-                        <span className="text-xs text-gray-500 flex-shrink-0 ml-2">
+                        <Label className="font-medium truncate text-black dark:text-white">{getChatDisplayName(chat)}</Label>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
                           {chat.latestMessage && formatTime(chat.latestMessage.createdAt)}
                         </span>
                       </div>
                       {chat.latestMessage && (
-                        <p className="text-sm text-gray-600 truncate">
+                        <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
                           {chat.latestMessage.content}
                         </p>
                       )}
@@ -235,18 +208,17 @@ const ChatApp = () => {
               );
             })
           )}
-        </div>
+        </ScrollArea>
       </div>
-
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
         {activeChat ? (
           <>
             {/* Chat Header */}
-            <div className="p-4 border-b bg-white flex items-center">
+            <div className="p-4 dark:bg-blue-900/10 flex items-center bg-white">
               <Button
                 onClick={handleBackToChats}
-                className="md:hidden mr-3 p-2 hover:bg-gray-100 rounded"
+                className="md:hidden mr-3 p-2 rounded dark:text-white text-black"
                 variant="ghost"
               >
                 <ArrowLeft size={20} />
@@ -260,8 +232,8 @@ const ChatApp = () => {
                 )}
               </div>
               <div className="flex-1">
-                <Label className="font-semibold text-black text-lg">{getChatDisplayName(activeChat)}</Label>
-                <p className="text-sm text-gray-600">
+                <Label className="font-semibold text-white text-lg">{getChatDisplayName(activeChat)}</Label>
+                <p className="text-sm text-gray-300">
                   {getOtherUser(activeChat)?.isOnline ? 'Online' : 'Offline'}
                 </p>
               </div>
@@ -295,8 +267,8 @@ const ChatApp = () => {
                         )}
                         <div className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
                           <div className={`max-w-xs md:max-w-md lg:max-w-lg px-4 py-2 rounded-lg ${isOwnMessage
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-200 text-gray-800'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-200 text-gray-800'
                             }`}>
                             <div className="whitespace-pre-wrap break-words">{message.content}</div>
                             <div className={`text-xs mt-1 ${isOwnMessage ? 'text-blue-100' : 'text-gray-500'
@@ -325,7 +297,7 @@ const ChatApp = () => {
             </div>
 
             {/* Message Input */}
-            <div className="p-4 border-t bg-white">
+            <div className="p-4 bg-white dark:bg-blue-950/10">
               <div className="flex items-center space-x-2">
                 <Input
                   type="text"

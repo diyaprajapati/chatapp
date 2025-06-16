@@ -106,7 +106,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
                 reconnectionDelay: 1000,
                 reconnectionDelayMax: 5000,
                 randomizationFactor: 0.5,
-                // path: '/socket.io',
                 withCredentials: true,
                 query: {
                     userId: user?._id || ''
@@ -124,32 +123,65 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
                 console.log('User setup complete');
             });
 
-            // Handle new chat creation
+            // Handle new chat creation - FIXED
             socket.on('new chat', (newChat: Chat) => {
-                console.log('New chat created:', newChat);
+                console.log('New chat received:', newChat);
                 setChats(prev => {
                     // Check if chat already exists
                     const chatExists = prev.some(chat => chat._id === newChat._id);
-                    if (chatExists) return prev;
+                    if (chatExists) {
+                        console.log('Chat already exists, skipping');
+                        return prev;
+                    }
 
+                    console.log('Adding new chat to list');
                     // Add new chat to the beginning of the list
-                    return [newChat, ...prev];
+                    const newChats = [newChat, ...prev];
+                    return newChats.sort((a, b) => {
+                        const aTime = a.latestMessage?.createdAt || a.updatedAt;
+                        const bTime = b.latestMessage?.createdAt || b.updatedAt;
+                        return new Date(bTime).getTime() - new Date(aTime).getTime();
+                    });
                 });
             });
 
-            // Fixed: Handle incoming messages properly
-            // In your socket initialization, modify the message received handler:
+            // Handle chat created event - NEW
+            socket.on('chat created', (data: { chat: Chat; participants: string[] }) => {
+                console.log('Chat created event received:', data);
+                const { chat: newChat, participants } = data;
+
+                // Only add to chats if current user is a participant
+                if (participants.includes(user._id)) {
+                    setChats(prev => {
+                        const chatExists = prev.some(chat => chat._id === newChat._id);
+                        if (chatExists) return prev;
+
+                        const newChats = [newChat, ...prev];
+                        return newChats.sort((a, b) => {
+                            const aTime = a.latestMessage?.createdAt || a.updatedAt;
+                            const bTime = b.latestMessage?.createdAt || b.updatedAt;
+                            return new Date(bTime).getTime() - new Date(aTime).getTime();
+                        });
+                    });
+                }
+            });
+
             socket.on('message received', (newMessage: Message) => {
-                // Skip if this is our own message (handled optimistically)
+                console.log('Message received:', newMessage);
+
+                // Don't add our own messages again
                 if (newMessage.userId._id === user._id) return;
 
-                setMessages(prev => {
-                    // Check if message already exists
-                    const messageExists = prev.some(msg => msg._id === newMessage._id);
-                    return messageExists ? prev : [...prev, newMessage];
-                });
+                const isForActiveChat = currentChatIdRef.current === newMessage.chatId;
 
-                // Update chat list
+                if (isForActiveChat) {
+                    setMessages(prev => {
+                        const messageExists = prev.some(msg => msg._id === newMessage._id);
+                        return messageExists ? prev : [...prev, newMessage];
+                    });
+                }
+
+                // Update chat list with latest message
                 setChats(prev => {
                     const updatedChats = prev.map(chat =>
                         chat._id === newMessage.chatId ? {
@@ -185,11 +217,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
                 updateUserOnlineStatus(userId, false);
             });
 
-            // Handle connection errors
-            // socket.on('connect_error', (error) => {
-            //     console.error('Socket connection error:', error);
-            // });
-
             socket.on('disconnect', (reason) => {
                 console.log('Socket disconnected:', reason);
             });
@@ -203,8 +230,16 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
                 socketRef.current.disconnect();
                 socketRef.current = null;
             }
+            if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+            }
         };
     }, [user]);
+
+    // Update current chat ID ref when active chat changes
+    useEffect(() => {
+        currentChatIdRef.current = activeChat?._id || null;
+    }, [activeChat]);
 
     // Update user online status in chats
     const updateUserOnlineStatus = (userId: string, isOnline: boolean) => {
@@ -287,19 +322,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         }
     };
 
-    // Send a message
-    // Add this to your ChatProvider component (outside sendMessage)
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    };
-
-    // Then modify your sendMessage function:
+    // Send a message - FIXED
     const sendMessage = async (content: string) => {
         if (!content.trim() || !activeChat || !user) return;
 
-        const tempId = `temp-${Date.now()}`;
+        const tempId = `temp-${Date.now()}-${Math.random()}`;
         const tempMessage: Message = {
             _id: tempId,
             userId: user,
@@ -320,42 +347,38 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
             const sentMessage = response.data;
 
-            // Replace temp message
+            // Replace temp message with real message
             setMessages(prev => prev.map(msg =>
                 msg._id === tempId ? sentMessage : msg
             ));
 
-            // Update chat list
-            setChats(prev => prev.map(chat =>
-                chat._id === activeChat._id ? {
-                    ...chat,
-                    latestMessage: sentMessage,
-                    updatedAt: sentMessage.createdAt
-                } : chat
-            ));
+            // Update chat list with latest message
+            setChats(prev => {
+                const updatedChats = prev.map(chat =>
+                    chat._id === activeChat._id ? {
+                        ...chat,
+                        latestMessage: sentMessage,
+                        updatedAt: sentMessage.createdAt
+                    } : chat
+                );
+                return updatedChats.sort((a, b) =>
+                    new Date(b.latestMessage?.createdAt || b.updatedAt).getTime() -
+                    new Date(a.latestMessage?.createdAt || a.updatedAt).getTime()
+                );
+            });
 
-            // Emit socket event
+            // Emit socket event - FIXED: emit to new message, not new chat
             if (socketRef.current) {
-                socketRef.current.emit('new message', {
-                    chatId: activeChat._id,
-                    message: sentMessage
-                });
+                socketRef.current.emit('new message', sentMessage);
             }
 
         } catch (error) {
-            console.error('Message send error:', {
-                message: error.message,
-                response: error.response?.data,
-                status: error.response?.status
-            });
-
-            // // Rollback optimistic update
-            // setMessages(prev => prev.filter(msg => msg._id !== tempId));
-
-            // // Show error to user (you can implement a toast notification)
-            // alert('Failed to send message. Please try again.');
+            console.error('Message send error:', error);
+            // Remove the failed message
+            setMessages(prev => prev.filter(msg => msg._id !== tempId));
         }
     };
+
     // Handle typing indicator
     const handleTyping = (isTypingNow: boolean) => {
         if (!socketRef.current || !activeChat || !user) return;
@@ -408,7 +431,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         }
     };
 
-    // Create new chat - FIXED VERSION
+    // Create new chat - FIXED
     const createChat = async (participantId: string) => {
         try {
             setLoading(true);
@@ -432,14 +455,19 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
             });
 
             const newChat = response.data;
-            console.log('New chat created:', newChat);
+            console.log('New chat created locally:', newChat);
 
             // Add to local state immediately
             setChats(prev => {
-                // Double check it doesn't exist
                 const chatExists = prev.some(chat => chat._id === newChat._id);
                 if (chatExists) return prev;
-                return [newChat, ...prev];
+
+                const newChats = [newChat, ...prev];
+                return newChats.sort((a, b) => {
+                    const aTime = a.latestMessage?.createdAt || a.updatedAt;
+                    const bTime = b.latestMessage?.createdAt || b.updatedAt;
+                    return new Date(bTime).getTime() - new Date(aTime).getTime();
+                });
             });
 
             // Emit socket event to notify other users
